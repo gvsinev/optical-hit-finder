@@ -1,0 +1,9 @@
+# Temporary files #
+###################
+*~
+*.swp
+
+# Compiled source #
+###################
+*.d
+*.so
