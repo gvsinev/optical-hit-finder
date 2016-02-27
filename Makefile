@@ -5,7 +5,7 @@
 
 OBJS     := RunHitFinder.o
 CXX      := g++
-CPPFLAGS := -Wall
+CXXFLAGS := -std=c++14 -Wall
 LDFLAGS  := -Wall
 RM       := rm
 
@@ -13,7 +13,7 @@ run-hit-finder: $(OBJS)
 	$(CXX) $(LDFLAGS) -o run-hit-finder $(OBJS)
 
 RunHitFinder.o: RunHitFinder.cxx
-	$(CXX) -c $(CPPFLAGS) RunHitFinder.cxx
+	$(CXX) -c $(CXXFLAGS) RunHitFinder.cxx
 
 clean:
 	$(RM) $(OBJS) run-hit-finder
