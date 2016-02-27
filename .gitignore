@@ -5,5 +5,5 @@
 
 # Compiled source #
 ###################
-*.d
-*.so
+*.o
+run-hit-finder
