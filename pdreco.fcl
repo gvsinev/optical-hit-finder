@@ -1,0 +1,43 @@
+ophit: {
+   AreaToPE: true
+   ChannelMasks: []
+   GenModule: "generator"
+   HitAlgoPset: {
+      ADCThreshold: 13
+      MinWidth: 10
+      Name: "SiPM"
+      Pedestal: 1500
+      SecondThreshold: 1
+   }
+   HitThreshold: 2e-1
+   InputLabels: [
+      ""
+   ]
+   InputModule: "opdigi"
+   PedAlgoPset: {
+      Method: 0
+      Name: "Edges"
+      NumSampleFront: 3
+      NumSampleTail: 3
+   }
+   SPEArea: 1330
+   module_type: "OpHitFinder"
+   reco_man: {
+      module_type: "PulseRecoManager"
+   }
+}
+
+DetectorClocksService: {
+  ClockSpeedExternal: 3.125e1
+  ClockSpeedOptical: 128
+  ClockSpeedTPC: 2
+  ClockSpeedTrigger: 16
+  DefaultBeamTime: 0
+  DefaultTrigTime: 0
+  FramePeriod: 1600
+  G4RefTime: 0
+  InheritClockConfig: false
+  TrigModuleName: ""
+  TriggerOffsetTPC: 0
+  service_provider: "DetectorClocksServiceStandard"
+}
