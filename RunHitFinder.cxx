@@ -15,6 +15,23 @@
 
 // LArSoft includes
 #include "lardata/RawData/OpDetWaveform.h"
+#include "larana/OpticalDetector/OpHitFinder/OpHitAlg.h"
+#include "lardata/DetectorInfo/DetectorClocksStandard.h"
+#include "lardata/RecoBase/OpHit.h"
+#include "larana/OpticalDetector/OpHitFinder/PMTPulseRecoBase.h"
+#include "larana/OpticalDetector/OpHitFinder/AlgoThreshold.h"
+#include "larana/OpticalDetector/OpHitFinder/AlgoSiPM.h"
+#include "larana/OpticalDetector/OpHitFinder/AlgoSlidingWindow.h"
+#include "larana/OpticalDetector/OpHitFinder/AlgoFixedWindow.h"
+#include "larana/OpticalDetector/OpHitFinder/AlgoCFD.h"
+#include "larana/OpticalDetector/OpHitFinder/PedAlgoEdges.h"
+#include "larana/OpticalDetector/OpHitFinder/PedAlgoRollingMean.h"
+#include "larana/OpticalDetector/OpHitFinder/PedAlgoUB.h"
+#include "larana/OpticalDetector/OpHitFinder/PulseRecoManager.h"
+#include "larcore/Geometry/ChannelMapAlg.h"
+#include "dune/Geometry/ChannelMap35Alg.h"
+#include "dune/Geometry/ChannelMap35OptAlg.h"
+#include "dune/Geometry/ChannelMapAPAAlg.h"
 
 // ROOT includes
 #include "TFile.h"
@@ -24,11 +41,21 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <memory>
+#include <stdexcept>
 
 // Function declarations
 fhicl::ParameterSet GetParameterSet(std::string const& FHiCLFileName);
 TH1D GetHistogram(TFile            & ROOTFile,
                   std::string const& histogramName);
+void FillWaveformFromHistogram(raw::OpDetWaveform      & waveform, 
+                               TH1D               const& histogram);
+std::unique_ptr< geo::GeometryCore > 
+         GetGeometry(fhicl::ParameterSet const& geometryParameterSet);
+std::unique_ptr< pmtana::PMTPulseRecoBase > 
+  GetThresholdAlgorithm(fhicl::ParameterSet const& opHitParameterSet);
+std::unique_ptr< pmtana::PMTPedestalBase >  
+  GetPedestalAlgorithm (fhicl::ParameterSet const& opHitParameterSet);
 
 //------------------------------------------------------------------------------
 //int main(int argc, char *argv[])
@@ -49,12 +76,60 @@ int main()
 
   std::string ROOTFileName("./waveforms.root"); 
   TFile inputFile(ROOTFileName.c_str(), "READ");
-  std::string histogramName("event_1_opchannel_0_waveform_0");
-  TH1D histogram = GetHistogram(inputFile, histogramName);
+  unsigned int opChannel = 0;
+  std::string histogramName("event_1_opchannel_" + std::to_string(opChannel) 
+                                                 + "_waveform_0");
+  TH1D const histogram = GetHistogram(inputFile, histogramName);
 
-  std::string outputFigure("test");
-  std::string format("C");
-  histogram.SaveAs((outputFigure + '.' + format).c_str(), format.c_str());
+  raw::OpDetWaveform waveform(histogram.GetBinCenter(0), opChannel);
+  FillWaveformFromHistogram(waveform, histogram);
+  std::vector< raw::OpDetWaveform > waveformVector;
+  waveformVector.emplace_back(waveform);
+
+  // Initialize services
+  std::unique_ptr< geo::GeometryCore > geometry = 
+    GetGeometry(parameterSet.get< fhicl::ParameterSet >("Geometry"));
+  detinfo::DetectorClocksStandard detectorClocks
+    (parameterSet.get< fhicl::ParameterSet >("DetectorClocksService"));
+
+  std::vector< recob::OpHit > opHitVector;
+
+  // Get hit finder FHiCL parameters
+  fhicl::ParameterSet opHitParameterSet = 
+                     parameterSet.get< fhicl::ParameterSet >("ophit");
+
+  // Auxiliary algorithm initialization
+  pmtana::PulseRecoManager  pulseRecoManager; 
+  std::unique_ptr< pmtana::PMTPulseRecoBase > thresholdAlgorithm = 
+                             GetThresholdAlgorithm(opHitParameterSet);
+  std::unique_ptr< pmtana::PMTPedestalBase >  pedestalAlgorithm  =
+                              GetPedestalAlgorithm(opHitParameterSet);
+  pulseRecoManager.AddRecoAlgo(thresholdAlgorithm.get());
+  pulseRecoManager.SetDefaultPedAlgo(pedestalAlgorithm.get());
+
+  // Other hit finder parameters
+  float hitThreshold = opHitParameterSet.get< float >("HitThreshold");
+  float areaToPE     = opHitParameterSet.get< bool  >("AreaToPE"    );
+  size_t maxOpChannel = geometry->MaxOpChannel();
+  std::vector< double > SPESize(maxOpChannel + 1, 
+                           opHitParameterSet.get< float >("SPEArea"));
+
+  // Run the hit finding algorithm
+  opdet::RunHitFinder(waveformVector,
+                      opHitVector,
+                      pulseRecoManager,
+                      *thresholdAlgorithm,
+                      *geometry,
+                      hitThreshold,
+                      detectorClocks,
+                      SPESize,
+                      areaToPE);
+
+  std::cout << "First hit time: " << opHitVector.at(0).PeakTime() << '\n';
+
+//  std::string outputFigure("test");
+//  std::string format("C");
+//  histogram.SaveAs((outputFigure + '.' + format).c_str(), format.c_str());
 
   return 0;
 
@@ -85,5 +160,118 @@ TH1D GetHistogram(TFile            & ROOTFile,
                                  ->Get(histogramName.c_str()));
 
   return *histogram;
+
+}
+
+//------------------------------------------------------------------------------
+void FillWaveformFromHistogram(raw::OpDetWaveform      & waveform, 
+                               TH1D               const& histogram)
+{
+
+  for (int bin = 0; bin < histogram.GetNbinsX(); ++bin)
+    waveform.emplace_back(histogram.GetBinContent(bin));
+
+}
+
+//------------------------------------------------------------------------------
+std::unique_ptr< geo::GeometryCore > 
+  GetGeometry(fhicl::ParameterSet const& geometryParameterSet)
+{
+
+  std::unique_ptr< geo::GeometryCore > geometry = 
+                  std::make_unique< geo::GeometryCore >(geometryParameterSet);
+  geometry->LoadGeometryFile(geometryParameterSet.get< std::string >("GDML"),
+                             geometryParameterSet.get< std::string >("ROOT"));
+
+  // Code from DUNEGeometryHelper_service 
+  // (it depeneds on ART, so I don't want to link it here)
+  
+  std::string const detectorName = geometry->DetectorName();
+
+  fhicl::ParameterSet const sortingParameters;
+
+  std::shared_ptr< geo::ChannelMapAlg > channelMap;
+  
+  // DUNE 35t prototype
+  if  ((detectorName.find("dune35t") != std::string::npos)
+    || (detectorName.find("lbne35t") != std::string::npos))
+  {
+    std::string const detectorVersion
+      = sortingParameters.get< std::string >("DetectorVersion");
+    
+    if  ((detectorVersion.find("v3") != std::string::npos)
+      || (detectorVersion.find("v4") != std::string::npos)
+      || (detectorVersion.find("v5") != std::string::npos))
+      channelMap = 
+        std::make_shared< geo::ChannelMap35OptAlg >(sortingParameters);
+    else
+      channelMap = 
+        std::make_shared< geo::ChannelMap35Alg >(sortingParameters);
+  }
+  // DUNE 10kt
+  else if ((detectorName.find("dune10kt") != std::string::npos) 
+        || (detectorName.find("lbne10kt") != std::string::npos))
+    channelMap = std::make_shared< geo::ChannelMapAPAAlg >(sortingParameters);
+  else 
+    throw std::invalid_argument("Unsupported geometry from input file: " 
+                                                   + detectorName + '\n');
+
+  if (channelMap)
+    geometry->ApplyChannelMap(channelMap);
+
+  return geometry;
+
+}
+
+//------------------------------------------------------------------------------
+std::unique_ptr< pmtana::PMTPulseRecoBase > 
+  GetThresholdAlgorithm(fhicl::ParameterSet const& opHitParameterSet)
+{
+
+  std::unique_ptr< pmtana::PMTPulseRecoBase > thresholdAlgorithm;
+
+  fhicl::ParameterSet const hitAlgPSet = 
+    opHitParameterSet.get< fhicl::ParameterSet >("HitAlgoPset");
+  std::string threshAlgName = hitAlgPSet.get< std::string >("Name");
+  if      (threshAlgName == "Threshold") 
+    thresholdAlgorithm = std::make_unique< pmtana::AlgoThreshold >(hitAlgPSet);
+  else if (threshAlgName == "SiPM") 
+    thresholdAlgorithm = std::make_unique< pmtana::AlgoSiPM >(hitAlgPSet);
+  else if (threshAlgName == "SlidingWindow")
+    thresholdAlgorithm = 
+                     std::make_unique< pmtana::AlgoSlidingWindow >(hitAlgPSet);
+  else if (threshAlgName == "FixedWindow")
+    thresholdAlgorithm = 
+                       std::make_unique< pmtana::AlgoFixedWindow >(hitAlgPSet);
+  else if (threshAlgName == "CFD" )
+    thresholdAlgorithm = std::make_unique< pmtana::AlgoCFD >(hitAlgPSet);
+  else throw std::invalid_argument("Cannot find implementation for " 
+                                   + threshAlgName + " algorithm.\n");
+
+  return thresholdAlgorithm;
+
+}
+
+//------------------------------------------------------------------------------
+std::unique_ptr< pmtana::PMTPedestalBase >
+  GetPedestalAlgorithm (fhicl::ParameterSet const& opHitParameterSet)
+{
+
+  std::unique_ptr< pmtana::PMTPedestalBase > pedestalAlgorithm;
+
+  auto const pedAlgPSet = 
+    opHitParameterSet.get< fhicl::ParameterSet >("PedAlgoPset");
+  std::string pedAlgName = pedAlgPSet.get< std::string >("Name");
+  if      (pedAlgName == "Edges")
+    pedestalAlgorithm = std::make_unique< pmtana::PedAlgoEdges >(pedAlgPSet);
+  else if (pedAlgName == "RollingMean")
+    pedestalAlgorithm = 
+                  std::make_unique< pmtana::PedAlgoRollingMean >(pedAlgPSet);
+  else if (pedAlgName == "UB"   )
+    pedestalAlgorithm = std::make_unique< pmtana::PedAlgoUB >(pedAlgPSet);
+  else throw std::invalid_argument("Cannot find implementation for " 
+                                      + pedAlgName + " algorithm.\n");
+
+  return pedestalAlgorithm;
 
 }

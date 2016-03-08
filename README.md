@@ -6,7 +6,14 @@ A program to test and tune an optical hit finder algorithm for DUNE.
 
 * FHiCL-CPP
 * ROOT
-* OpHitAlg
-* DetectorClocks
+* LArData
+* LArCore
+* DUNETPC
 
 Having LArSoft (v05\_00\_00 or later) installed should satisfy these requirements.
+
+## Configuration
+Hit finder parameters can be modified in `pdreco.fcl`.
+
+## Input
+The input is a ROOT file with waveforms (in TH1D histogram format) `waveforms.root`.

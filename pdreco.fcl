@@ -41,3 +41,11 @@ DetectorClocksService: {
   TriggerOffsetTPC: 0
   service_provider: "DetectorClocksServiceStandard"
 }
+
+Geometry: {
+  DisableWiresInG4: true
+  GDML: "/dune/app/users/gvsinev/larsoft_split/srcs/dunetpc/dune/Geometry/gdml/dune10kt_v1_workspace.gdml"
+  Name: "dune10kt_v1_workspace"
+  ROOT: "/dune/app/users/gvsinev/larsoft_split/srcs/dunetpc/dune/Geometry/gdml/dune10kt_v1_workspace.gdml"
+  SurfaceY: 147828
+}
