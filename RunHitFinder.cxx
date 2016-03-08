@@ -39,6 +39,7 @@
 
 // C++ includes
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <memory>
@@ -46,6 +47,8 @@
 
 // Function declarations
 fhicl::ParameterSet GetParameterSet(std::string const& FHiCLFileName);
+unsigned int const GetUIntArgument(size_t const argumentNumber, 
+                                        int argc, char *argv[]);
 TH1D GetHistogram(TFile            & ROOTFile,
                   std::string const& histogramName);
 void FillWaveformFromHistogram(raw::OpDetWaveform      & waveform, 
@@ -58,17 +61,17 @@ std::unique_ptr< pmtana::PMTPedestalBase >
   GetPedestalAlgorithm (fhicl::ParameterSet const& opHitParameterSet);
 
 //------------------------------------------------------------------------------
-//int main(int argc, char *argv[])
-int main()
+int main(int argc, char *argv[])
 {
 
-//  int numberOfArguments = 2;
-//  if (argc < numberOfArguments) 
-//  {
-//    std::cout << "Usage: run-hit-finder FHiCL-file.fcl.\n";
-//    return 1;
-//  }
-//
+  int numberOfArguments = 3;
+  if (argc != (numberOfArguments + 1)) 
+  {
+    std::cout << "Usage: run-hit-finder "
+                 "eventNumber opChannel waveformNumber.\n";
+    return 1;
+  }
+
   std::cout << "Starting hit finder.\n";
 
   std::string FHiCLFileName("./pdreco.fcl"); 
@@ -76,9 +79,13 @@ int main()
 
   std::string ROOTFileName("./waveforms.root"); 
   TFile inputFile(ROOTFileName.c_str(), "READ");
-  unsigned int opChannel = 0;
-  std::string histogramName("event_1_opchannel_" + std::to_string(opChannel) 
-                                                 + "_waveform_0");
+  unsigned int const eventNumber    = GetUIntArgument(1, argc, argv);
+  unsigned int const opChannel      = GetUIntArgument(2, argc, argv);
+  unsigned int const waveformNumber = GetUIntArgument(3, argc, argv);
+  std::string histogramName("event_"      + std::to_string(eventNumber) +
+                            "_opchannel_" + std::to_string(opChannel)   +
+                            "_waveform_"  + std::to_string(waveformNumber));
+  std::cout << "Reading " << histogramName << ".\n";
   TH1D const histogram = GetHistogram(inputFile, histogramName);
 
   raw::OpDetWaveform waveform(histogram.GetBinCenter(0), opChannel);
@@ -125,8 +132,6 @@ int main()
                       SPESize,
                       areaToPE);
 
-  std::cout << "First hit time: " << opHitVector.at(0).PeakTime() << '\n';
-
 //  std::string outputFigure("test");
 //  std::string format("C");
 //  histogram.SaveAs((outputFigure + '.' + format).c_str(), format.c_str());
@@ -149,6 +154,28 @@ fhicl::ParameterSet GetParameterSet(std::string const& FHiCLFileName)
 }
 
 //------------------------------------------------------------------------------
+unsigned int const GetUIntArgument(size_t const argumentNumber, 
+                                        int argc, char *argv[])
+{
+
+  unsigned int argument;
+
+  if (argumentNumber > static_cast< unsigned int >(argc - 1)) 
+    throw std::invalid_argument
+      ("argumentNumber (" + std::to_string(argumentNumber) +
+       ") is greater than the number of arguments ("       + 
+                            std::to_string(argc - 1) + ")\n");
+
+  std::istringstream input(argv[argumentNumber]);
+  if (!(input >> argument)) 
+    throw std::invalid_argument("Argument #" + std::to_string(argumentNumber) +
+                                " is not a number");
+
+  return argument;
+
+}
+
+//------------------------------------------------------------------------------
 // Input is a LArSoft file with waveform histograms
 TH1D GetHistogram(TFile            & ROOTFile,
                   std::string const& histogramName)
@@ -158,6 +185,9 @@ TH1D GetHistogram(TFile            & ROOTFile,
   TH1D *histogram = 
     dynamic_cast< TH1D* >(ROOTFile.GetDirectory(directoryName.c_str())
                                  ->Get(histogramName.c_str()));
+
+  if (!histogram) throw std::invalid_argument("Histogram " + histogramName +
+            " does not exist in " + ROOTFile.GetName() + '/' + directoryName);
 
   return *histogram;
 

@@ -11,3 +11,7 @@ run-hit-finder
 # Data #
 ########
 *.root
+
+# Output #
+##########
+output/*.pdf
