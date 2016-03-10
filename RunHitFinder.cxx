@@ -36,6 +36,8 @@
 // ROOT includes
 #include "TFile.h"
 #include "TH1D.h"
+#include "TCanvas.h"
+#include "TLine.h"
 
 // C++ includes
 #include <iostream>
@@ -53,6 +55,8 @@ TH1D GetHistogram(TFile            & ROOTFile,
                   std::string const& histogramName);
 void FillWaveformFromHistogram(raw::OpDetWaveform      & waveform, 
                                TH1D               const& histogram);
+void DrawHitsOnWaveform(TH1D                             & histogram,
+                        std::vector< recob::OpHit > const& opHitVector);
 std::unique_ptr< geo::GeometryCore > 
          GetGeometry(fhicl::ParameterSet const& geometryParameterSet);
 std::unique_ptr< pmtana::PMTPulseRecoBase > 
@@ -86,7 +90,7 @@ int main(int argc, char *argv[])
                             "_opchannel_" + std::to_string(opChannel)   +
                             "_waveform_"  + std::to_string(waveformNumber));
   std::cout << "Reading " << histogramName << ".\n";
-  TH1D const histogram = GetHistogram(inputFile, histogramName);
+  TH1D histogram = GetHistogram(inputFile, histogramName);
 
   raw::OpDetWaveform waveform(histogram.GetBinCenter(0), opChannel);
   FillWaveformFromHistogram(waveform, histogram);
@@ -131,6 +135,8 @@ int main(int argc, char *argv[])
                       detectorClocks,
                       SPESize,
                       areaToPE);
+
+  DrawHitsOnWaveform(histogram, opHitVector);
 
 //  std::string outputFigure("test");
 //  std::string format("C");
@@ -200,6 +206,42 @@ void FillWaveformFromHistogram(raw::OpDetWaveform      & waveform,
 
   for (int bin = 0; bin < histogram.GetNbinsX(); ++bin)
     waveform.emplace_back(histogram.GetBinContent(bin));
+
+}
+
+//------------------------------------------------------------------------------
+void DrawHitsOnWaveform(TH1D                             & histogram,
+                        std::vector< recob::OpHit > const& opHitVector)
+{
+
+  TCanvas canvas("canvas", "The waveform with hits on top", 0, 10, 2000, 1000);
+
+  histogram.SetStats(0);
+
+  histogram.Draw();
+
+  canvas.Update();
+
+  double YMin = canvas.GetUymin();
+  double YMax = canvas.GetUymax();
+  
+  std::vector< TLine > lineVector;
+  for (auto const& opHit : opHitVector)
+  {
+    double peakTime = opHit.PeakTime();
+    TLine line(peakTime, YMin, peakTime, YMax);
+    line.SetLineColor(kGreen);
+    line.SetLineWidth(3.0);
+    lineVector.emplace_back(line);
+  }
+
+  for (auto& line : lineVector)
+    line.Draw();
+
+  std::string outputDirectory("output");
+  std::string outputFileName(outputDirectory + '/' + 
+                             histogram.GetName() + ".pdf");
+  canvas.Print(outputFileName.c_str(), "Title");
 
 }
 
