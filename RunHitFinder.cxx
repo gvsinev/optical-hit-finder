@@ -138,10 +138,6 @@ int main(int argc, char *argv[])
 
   DrawHitsOnWaveform(histogram, opHitVector);
 
-//  std::string outputFigure("test");
-//  std::string format("C");
-//  histogram.SaveAs((outputFigure + '.' + format).c_str(), format.c_str());
-
   return 0;
 
 }
