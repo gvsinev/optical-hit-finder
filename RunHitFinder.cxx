@@ -216,6 +216,8 @@ void DrawHitsOnWaveform(TH1D                             & histogram,
 
   histogram.Draw();
 
+  // Need to update the canvas in order to get YMin and YMax
+  // (otherwise they are just 0 and 1, respectively)
   canvas.Update();
 
   double YMin = canvas.GetUymin();
